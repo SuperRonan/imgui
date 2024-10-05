@@ -1023,9 +1023,27 @@ bool ImGui_ImplVulkan_CreateDeviceObjects()
         check_vk_result(err);
     }
 
-    ImGui_ImplVulkan_CreatePipeline(v->Device, v->Allocator, v->PipelineCache, v->RenderPass, v->MSAASamples, &bd->Pipeline, v->Subpass);
+    if (v->RenderPass || v->UseDynamicRendering)
+    {
+        ImGui_ImplVulkan_CreatePipeline(v->Device, v->Allocator, v->PipelineCache, v->RenderPass, v->MSAASamples, &bd->Pipeline, v->Subpass);
+    }
 
     return true;
+}
+
+void ImGui_ImplVulkan_ReCreateMainPipeline(VkRenderPass render_pass, uint32_t subpass, VkSampleCountFlagBits MSSA_samples)
+{
+    ImGui_ImplVulkan_Data* bd = ImGui_ImplVulkan_GetBackendData();
+    ImGui_ImplVulkan_InitInfo* v = &bd->VulkanInitInfo;
+    if (bd->Pipeline)
+    {
+        vkDestroyPipeline(v->Device, bd->Pipeline, v->Allocator);
+        bd->Pipeline = VK_NULL_HANDLE;
+    }
+    v->RenderPass = render_pass;
+    v->MSAASamples = MSSA_samples;
+    v->Subpass = subpass;
+    ImGui_ImplVulkan_CreatePipeline(v->Device, v->Allocator, v->PipelineCache, v->RenderPass, v->MSAASamples, &bd->Pipeline, v->Subpass);
 }
 
 void    ImGui_ImplVulkan_DestroyDeviceObjects()
