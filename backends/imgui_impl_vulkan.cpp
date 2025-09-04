@@ -1183,6 +1183,7 @@ void ImGui_ImplVulkan_CreateMainPipeline(const ImGui_ImplVulkan_MainPipelineCrea
     v->MSAASamples = info.MSAASamples;
     v->Subpass = info.Subpass;
 
+    const VkPipelineRenderingCreateInfoKHR* rendering_ci = nullptr;
 #ifdef IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING
     if (v->UseDynamicRendering)
     {
@@ -1197,9 +1198,10 @@ void ImGui_ImplVulkan_CreateMainPipeline(const ImGui_ImplVulkan_MainPipelineCrea
         }
         memcpy(my_array, info.PipelineRenderingCreateInfo.pColorAttachmentFormats, sizeof(VkFormat) * info.PipelineRenderingCreateInfo.colorAttachmentCount);
         v->PipelineRenderingCreateInfo.pColorAttachmentFormats = my_array;
+        rendering_ci = &info.PipelineRenderingCreateInfo;
     }
 #endif
-    bd->Pipeline = ImGui_ImplVulkan_CreatePipeline(v->Device, v->Allocator, v->PipelineCache, v->RenderPass, v->MSAASamples, v->Subpass, v->UseDynamicRendering ? &info.PipelineRenderingCreateInfo : nullptr);
+    bd->Pipeline = ImGui_ImplVulkan_CreatePipeline(v->Device, v->Allocator, v->PipelineCache, v->RenderPass, v->MSAASamples, v->Subpass, rendering_ci);
 }
 
 void    ImGui_ImplVulkan_DestroyDeviceObjects()
