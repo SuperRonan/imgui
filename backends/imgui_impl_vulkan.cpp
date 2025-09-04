@@ -1185,7 +1185,19 @@ void ImGui_ImplVulkan_CreateMainPipeline(const ImGui_ImplVulkan_MainPipelineCrea
 
 #ifdef IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING
     if (v->UseDynamicRendering)
+    {
+        // Copy the new rendering info for consistency, and deep copy the formats
+        VkFormat* my_array = const_cast<VkFormat*>(v->PipelineRenderingCreateInfo.pColorAttachmentFormats);
+        const uint32_t old_count = v->PipelineRenderingCreateInfo.colorAttachmentCount;
         v->PipelineRenderingCreateInfo = info.PipelineRenderingCreateInfo;
+        if (!my_array || old_count != info.PipelineRenderingCreateInfo.colorAttachmentCount)
+        {
+            IM_FREE((void*)const_cast<VkFormat*>(my_array));
+            my_array = (VkFormat*)IM_ALLOC(sizeof(VkFormat) * info.PipelineRenderingCreateInfo.colorAttachmentCount);
+        }
+        memcpy(my_array, info.PipelineRenderingCreateInfo.pColorAttachmentFormats, sizeof(VkFormat) * info.PipelineRenderingCreateInfo.colorAttachmentCount);
+        v->PipelineRenderingCreateInfo.pColorAttachmentFormats = my_array;
+    }
 #endif
     bd->Pipeline = ImGui_ImplVulkan_CreatePipeline(v->Device, v->Allocator, v->PipelineCache, v->RenderPass, v->MSAASamples, v->Subpass, v->UseDynamicRendering ? &info.PipelineRenderingCreateInfo : nullptr);
 }
