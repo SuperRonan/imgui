@@ -333,6 +333,7 @@ struct ImGui_ImplVulkan_Data
     VkSurfaceFormatKHR          ViewportsFormat;        // Common for all viewports, may differ from VulkanInitInfo.SecondaryViewportsInfo.DesiredFormat
     // Filled during ImGui_ImplVulkan_PrepareViewportsRendering() based on ViewportsFormat and VulkanInitInfo->SecondaryViewportsInfo
     ImGui_ImplVulkan_PipelineInfo PipelineInfoForViewports;
+    CachedPipelineLayout        PipelineLayoutForViewports;
     VkPipeline                  PipelineForViewports;   // pipeline for secondary viewports (created by backend)
 
 
@@ -1350,6 +1351,11 @@ void    ImGui_ImplVulkan_DestroyDeviceObjects()
         vkDestroyRenderPass(v->Device, bd->PipelineInfoForViewports.RenderPass, v->Allocator);
         bd->PipelineInfoForViewports.RenderPass = VK_NULL_HANDLE;
     }
+    if (bd->PipelineLayoutForViewports.Handle)
+    {
+        vkDestroyPipelineLayout(v->Device, bd->PipelineLayoutForViewports.Handle, v->Allocator);
+        bd->PipelineLayoutForViewports.Handle = VK_NULL_HANDLE;
+    }
 }
 
 #ifdef IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING
@@ -2176,7 +2182,7 @@ static void ImGui_ImplVulkan_PrepareViewportsRendering(VkSurfaceKHR surface)
             pipeline_info->RenderPass = ImGui_ImplVulkanH_CreateRenderPass(v->Device, v->Allocator, attachment);
             pipeline_info->Subpass = 0;
         }
-        bd->PipelineForViewports = ImGui_ImplVulkan_CreatePipeline(v->Device, v->Allocator, VK_NULL_HANDLE, pipeline_info, bd->PipelineLayout);
+        bd->PipelineForViewports = ImGui_ImplVulkan_CreatePipeline(v->Device, v->Allocator, VK_NULL_HANDLE, pipeline_info, bd->PipelineLayoutForViewports);
     }
 }
 
@@ -2358,7 +2364,7 @@ static void ImGui_ImplVulkan_RenderWindow(ImGuiViewport* viewport, void*)
         }
     }
 
-    ImGui_ImplVulkan_RenderDrawData(viewport->DrawData, fd->CommandBuffer, bd->PipelineForViewports);
+    ImGui_ImplVulkan_RenderDrawData(viewport->DrawData, fd->CommandBuffer, bd->PipelineForViewports, bd->PipelineLayoutForViewports.Handle);
 
     {
 #ifdef IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING
