@@ -531,20 +531,18 @@ static void CreateOrResizeBuffer(VkBuffer& buffer, VkDeviceMemory& buffer_memory
     buffer_size = buffer_size_aligned;
 }
 
-static void ImGui_ImplVulkan_SetupRenderState(ImDrawData* draw_data, VkPipeline pipeline, VkCommandBuffer command_buffer, ImGui_ImplVulkan_FrameRenderBuffers* rb, int fb_width, int fb_height)
+static void ImGui_ImplVulkanH_SetupRenderState(ImDrawData* draw_data, ImGui_ImplVulkan_RenderState const& rs, ImGui_ImplVulkan_FrameRenderBuffers* rb, int fb_width, int fb_height, VkDescriptorSet sampler)
 {
-    ImGui_ImplVulkan_Data* bd = ImGui_ImplVulkan_GetBackendData();
-
     // Bind pipeline:
-    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    vkCmdBindPipeline(rs.CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rs.Pipeline);
 
     // Bind Vertex And Index Buffer:
     if (draw_data->TotalVtxCount > 0)
     {
         VkBuffer vertex_buffers[1] = { rb->VertexBuffer };
         VkDeviceSize vertex_offset[1] = { 0 };
-        vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, vertex_offset);
-        vkCmdBindIndexBuffer(command_buffer, rb->IndexBuffer, 0, sizeof(ImDrawIdx) == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+        vkCmdBindVertexBuffers(rs.CommandBuffer, 0, 1, vertex_buffers, vertex_offset);
+        vkCmdBindIndexBuffer(rs.CommandBuffer, rb->IndexBuffer, 0, sizeof(ImDrawIdx) == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
     }
 
     // Setup viewport:
@@ -555,7 +553,7 @@ static void ImGui_ImplVulkan_SetupRenderState(ImDrawData* draw_data, VkPipeline 
     viewport.height = (float)fb_height;
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+    vkCmdSetViewport(rs.CommandBuffer, 0, 1, &viewport);
 
     // Setup scale and translation:
     // Our visible imgui space lies from draw_data->DisplayPps (top left) to draw_data->DisplayPos+data_data->DisplaySize (bottom right). DisplayPos is (0,0) for single viewport apps.
@@ -564,10 +562,10 @@ static void ImGui_ImplVulkan_SetupRenderState(ImDrawData* draw_data, VkPipeline 
     constants[1] = 2.0f / draw_data->DisplaySize.y;
     constants[2] = -1.0f - draw_data->DisplayPos.x * constants[0]; // Translate
     constants[3] = -1.0f - draw_data->DisplayPos.y * constants[1];
-    vkCmdPushConstants(command_buffer, bd->PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 4, constants);
+    vkCmdPushConstants(rs.CommandBuffer, rs.PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 4, constants);
 
     // Setup sampler
-    vkCmdBindDescriptorSets(bd->RenderState->CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, bd->PipelineLayout, 1, 1, &bd->SamplerLinearDS, 0, nullptr);
+    vkCmdBindDescriptorSets(rs.CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rs.PipelineLayout, 1, 1, &sampler, 0, nullptr);
 }
 
 // Draw callbacks
@@ -585,7 +583,7 @@ void ImGui_ImplVulkan_DrawCallback_SetSamplerCustom(const ImDrawList*, const ImD
 */
 
 // Render function
-void ImGui_ImplVulkan_RenderDrawData(ImDrawData* draw_data, VkCommandBuffer command_buffer, VkPipeline pipeline)
+void ImGui_ImplVulkan_RenderDrawData(ImDrawData* draw_data, VkCommandBuffer command_buffer, VkPipeline pipeline, VkPipelineLayout pipeline_layout)
 {
     // Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
     int fb_width = (int)(draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
@@ -604,6 +602,8 @@ void ImGui_ImplVulkan_RenderDrawData(ImDrawData* draw_data, VkCommandBuffer comm
     ImGui_ImplVulkan_InitInfo* v = &bd->VulkanInitInfo;
     if (pipeline == VK_NULL_HANDLE)
         pipeline = bd->Pipeline;
+    if(pipeline_layout == VK_NULL_HANDLE)
+        pipeline_layout = bd->PipelineLayout;
 
     // Allocate array to store enough vertex/index buffers. Each unique viewport gets its own storage.
     ImGui_ImplVulkan_ViewportData* viewport_renderer_data = (ImGui_ImplVulkan_ViewportData*)draw_data->OwnerViewport->RendererUserData;
@@ -666,7 +666,7 @@ void ImGui_ImplVulkan_RenderDrawData(ImDrawData* draw_data, VkCommandBuffer comm
     platform_io.Renderer_RenderState = bd->RenderState = &render_state;
 
     // Setup desired Vulkan state
-    ImGui_ImplVulkan_SetupRenderState(draw_data, pipeline, command_buffer, rb, fb_width, fb_height);
+    ImGui_ImplVulkanH_SetupRenderState(draw_data, render_state, rb, fb_width, fb_height, bd->SamplerLinearDS);
 
     // Will project scissor/clipping rectangles into framebuffer space
     ImVec2 clip_off = draw_data->DisplayPos;         // (0,0) unless using multi-viewports
@@ -687,7 +687,7 @@ void ImGui_ImplVulkan_RenderDrawData(ImDrawData* draw_data, VkCommandBuffer comm
                 // User callback, registered via ImDrawList::AddCallback()
                 if (pcmd->UserCallback == ImGui_ImplVulkan_DrawCallback_ResetRenderState)
                 {
-                    ImGui_ImplVulkan_SetupRenderState(draw_data, pipeline, command_buffer, rb, fb_width, fb_height);
+                    ImGui_ImplVulkanH_SetupRenderState(draw_data, render_state, rb, fb_width, fb_height, bd->SamplerLinearDS);
                     last_image_view = VK_NULL_HANDLE;
                 }
                 else
