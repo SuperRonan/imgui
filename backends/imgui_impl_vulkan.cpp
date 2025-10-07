@@ -280,12 +280,17 @@ struct ImGui_ImplVulkan_ViewportData
 // Vulkan data
 struct ImGui_ImplVulkan_Data
 {
+    struct CachedPipelineLayout
+    {
+        VkPipelineLayout        Handle;
+    };
+
     ImGui_ImplVulkan_InitInfo   VulkanInitInfo;
     VkDeviceSize                BufferMemoryAlignment;
     VkDeviceSize                NonCoherentAtomSize;
     VkPipelineCreateFlags       PipelineCreateFlags;
     VkDescriptorSetLayout       DescriptorSetLayout;
-    VkPipelineLayout            PipelineLayout;
+    CachedPipelineLayout        PipelineLayout;
     VkPipeline                  Pipeline;               // pipeline for main render pass (created by app)
     VkShaderModule              ShaderModuleVert;
     VkShaderModule              ShaderModuleFrag;
@@ -565,7 +570,7 @@ void ImGui_ImplVulkan_RenderDrawData(ImDrawData* draw_data, VkCommandBuffer comm
     if (pipeline == VK_NULL_HANDLE)
         pipeline = bd->Pipeline;
     if(pipeline_layout == VK_NULL_HANDLE)
-        pipeline_layout = bd->PipelineLayout;
+        pipeline_layout = bd->PipelineLayout.Handle;
 
     // Allocate array to store enough vertex/index buffers. Each unique viewport gets its own storage.
     ImGui_ImplVulkan_ViewportData* viewport_renderer_data = (ImGui_ImplVulkan_ViewportData*)draw_data->OwnerViewport->RendererUserData;
@@ -956,11 +961,48 @@ static void ImGui_ImplVulkan_CreateShaderModules(VkDevice device, const VkAlloca
     }
 }
 
+static VkPipelineLayout ImGui_ImplVulkan_CreatePipelineLayout()
+{
+    ImGui_ImplVulkan_Data* bd = ImGui_ImplVulkan_GetBackendData();
+    ImGui_ImplVulkan_InitInfo* v = &bd->VulkanInitInfo;
+
+    // Constants: we are using 'vec2 offset' and 'vec2 scale' instead of a full 3d projection matrix
+
+    VkPipelineLayoutCreateInfo layout_info = {};
+
+    VkDescriptorSetLayout set_layout[1] = { bd->DescriptorSetLayout };
+    layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layout_info.setLayoutCount = 1;
+    layout_info.pSetLayouts = set_layout;
+
+    VkPushConstantRange push_constants[2] = {};
+    layout_info.pPushConstantRanges = push_constants;
+
+    push_constants[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    push_constants[0].offset = sizeof(float) * 0;
+    push_constants[0].size = sizeof(float) * 4;
+    layout_info.pushConstantRangeCount = 1;
+
+    VkPipelineLayout res = VK_NULL_HANDLE;
+    VkResult err = vkCreatePipelineLayout(bd->VulkanInitInfo.Device, &layout_info, v->Allocator, &res);
+    check_vk_result(err);
+    return res;
+}
+
+static VkPipelineLayout ImGui_ImplVulkan_GetPipelineLayout(ImGui_ImplVulkan_Data::CachedPipelineLayout& cache)
+{
+    if (!cache.Handle)
+    {
+        cache.Handle = ImGui_ImplVulkan_CreatePipelineLayout();
+    }
+    return cache.Handle;
+}
+
 #if !defined(IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING) && !(defined(VK_VERSION_1_3) || defined(VK_KHR_dynamic_rendering))
 typedef void VkPipelineRenderingCreateInfoKHR;
 #endif
 
-static VkPipeline ImGui_ImplVulkan_CreatePipeline(VkDevice device, const VkAllocationCallbacks* allocator, VkPipelineCache pipelineCache, const ImGui_ImplVulkan_PipelineInfo* info)
+static VkPipeline ImGui_ImplVulkan_CreatePipeline(VkDevice device, const VkAllocationCallbacks* allocator, VkPipelineCache pipelineCache, const ImGui_ImplVulkan_PipelineInfo* info, ImGui_ImplVulkan_Data::CachedPipelineLayout & layout)
 {
     ImGui_ImplVulkan_Data* bd = ImGui_ImplVulkan_GetBackendData();
     ImGui_ImplVulkan_CreateShaderModules(device, allocator);
@@ -1057,7 +1099,7 @@ static VkPipeline ImGui_ImplVulkan_CreatePipeline(VkDevice device, const VkAlloc
     create_info.pDepthStencilState = &depth_info;
     create_info.pColorBlendState = &blend_info;
     create_info.pDynamicState = &dynamic_state;
-    create_info.layout = bd->PipelineLayout;
+    create_info.layout = ImGui_ImplVulkan_GetPipelineLayout(layout);
     create_info.renderPass = info->RenderPass;
     create_info.subpass = info->Subpass;
 
@@ -1129,24 +1171,6 @@ bool ImGui_ImplVulkan_CreateDeviceObjects()
         check_vk_result(err);
     }
 
-    if (!bd->PipelineLayout)
-    {
-        // Constants: we are using 'vec2 offset' and 'vec2 scale' instead of a full 3d projection matrix
-        VkPushConstantRange push_constants[1] = {};
-        push_constants[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        push_constants[0].offset = sizeof(float) * 0;
-        push_constants[0].size = sizeof(float) * 4;
-        VkDescriptorSetLayout set_layout[1] = { bd->DescriptorSetLayout };
-        VkPipelineLayoutCreateInfo layout_info = {};
-        layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        layout_info.setLayoutCount = 1;
-        layout_info.pSetLayouts = set_layout;
-        layout_info.pushConstantRangeCount = 1;
-        layout_info.pPushConstantRanges = push_constants;
-        err = vkCreatePipelineLayout(v->Device, &layout_info, v->Allocator, &bd->PipelineLayout);
-        check_vk_result(err);
-    }
-
     // Create pipeline
     bool create_main_pipeline = (v->PipelineInfoMain.RenderPass != VK_NULL_HANDLE);
 #ifdef IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING
@@ -1203,7 +1227,7 @@ void ImGui_ImplVulkan_CreateMainPipeline(const ImGui_ImplVulkan_PipelineInfo* pi
         pipeline_rendering_create_info->pColorAttachmentFormats = bd->PipelineRenderingCreateInfoColorAttachmentFormats.Data;
     }
 #endif
-    bd->Pipeline = ImGui_ImplVulkan_CreatePipeline(v->Device, v->Allocator, v->PipelineCache, pipeline_info);
+    bd->Pipeline = ImGui_ImplVulkan_CreatePipeline(v->Device, v->Allocator, v->PipelineCache, pipeline_info, bd->PipelineLayout);
 }
 
 void    ImGui_ImplVulkan_DestroyDeviceObjects()
@@ -1223,7 +1247,11 @@ void    ImGui_ImplVulkan_DestroyDeviceObjects()
     if (bd->ShaderModuleVert)     { vkDestroyShaderModule(v->Device, bd->ShaderModuleVert, v->Allocator); bd->ShaderModuleVert = VK_NULL_HANDLE; }
     if (bd->ShaderModuleFrag)     { vkDestroyShaderModule(v->Device, bd->ShaderModuleFrag, v->Allocator); bd->ShaderModuleFrag = VK_NULL_HANDLE; }
     if (bd->DescriptorSetLayout)  { vkDestroyDescriptorSetLayout(v->Device, bd->DescriptorSetLayout, v->Allocator); bd->DescriptorSetLayout = VK_NULL_HANDLE; }
-    if (bd->PipelineLayout)       { vkDestroyPipelineLayout(v->Device, bd->PipelineLayout, v->Allocator); bd->PipelineLayout = VK_NULL_HANDLE; }
+    if (bd->PipelineLayout.Handle)
+    {
+        vkDestroyPipelineLayout(v->Device, bd->PipelineLayout.Handle, v->Allocator);
+        bd->PipelineLayout.Handle = VK_NULL_HANDLE;
+    }
     if (bd->Pipeline)             { vkDestroyPipeline(v->Device, bd->Pipeline, v->Allocator); bd->Pipeline = VK_NULL_HANDLE; }
     if (bd->DescriptorPool)       { vkDestroyDescriptorPool(v->Device, bd->DescriptorPool, v->Allocator); bd->DescriptorPool = VK_NULL_HANDLE; }
 
@@ -2048,7 +2076,7 @@ static void ImGui_ImplVulkan_PrepareViewportsRendering(VkSurfaceKHR surface)
             pipeline_info->RenderPass = ImGui_ImplVulkanH_CreateRenderPass(v->Device, v->Allocator, attachment);
             pipeline_info->Subpass = 0;
         }
-        bd->PipelineForViewports = ImGui_ImplVulkan_CreatePipeline(v->Device, v->Allocator, VK_NULL_HANDLE, pipeline_info);
+        bd->PipelineForViewports = ImGui_ImplVulkan_CreatePipeline(v->Device, v->Allocator, VK_NULL_HANDLE, pipeline_info, bd->PipelineLayout);
     }
 }
 
