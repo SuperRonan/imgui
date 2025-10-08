@@ -2243,6 +2243,17 @@ static void ImGui_ImplVulkan_PrepareViewportsRendering(VkSurfaceKHR surface)
             pipeline_info->RenderPass = ImGui_ImplVulkanH_CreateRenderPass(v->Device, v->Allocator, attachment);
             pipeline_info->Subpass = 0;
         }
+
+        if (v->SecondaryViewportsInfo.GetCustomShadersInfo)
+        {
+            pipeline_info->CustomShadersInfo = v->SecondaryViewportsInfo.GetCustomShadersInfo(v->SecondaryViewportsInfo.GetCustomShadersInfoUserData, bd->ViewportsFormat);
+            ImGui_ImplVulkan_SanitizeCustomShadersInfo(pipeline_info->CustomShadersInfo);
+        }
+        else
+        {
+            memset(&pipeline_info->CustomShadersInfo, 0, sizeof(ImGui_ImplVulkan_CustomShadersInfo));
+        }
+
         bd->PipelineForViewports = ImGui_ImplVulkan_CreatePipeline(v->Device, v->Allocator, VK_NULL_HANDLE, pipeline_info, bd->PipelineLayoutForViewports);
     }
 }
@@ -2323,7 +2334,7 @@ static void ImGui_ImplVulkan_SetWindowSize(ImGuiViewport* viewport, ImVec2 size)
     ImGui_ImplVulkanH_CreateOrResizeWindow(v->Instance, v->PhysicalDevice, v->Device, &vd->Window, v->QueueFamily, v->Allocator, (int)size.x, (int)size.y, v->MinImageCount, v->SecondaryViewportsInfo.SwapChainImageUsage);
 }
 
-static void ImGui_ImplVulkan_RenderWindow(ImGuiViewport* viewport, void*)
+static void ImGui_ImplVulkan_RenderWindow(ImGuiViewport* viewport, void* renderer_args_void)
 {
     ImGui_ImplVulkan_Data* bd = ImGui_ImplVulkan_GetBackendData();
     ImGui_ImplVulkan_ViewportData* vd = (ImGui_ImplVulkan_ViewportData*)viewport->RendererUserData;
@@ -2332,6 +2343,7 @@ static void ImGui_ImplVulkan_RenderWindow(ImGuiViewport* viewport, void*)
     ImGui_ImplVulkanH_Window* wd = &vd->Window;
     ImGui_ImplVulkan_InitInfo* v = &bd->VulkanInitInfo;
     VkResult err;
+    const ImGui_ImplVulkan_ViewportsRendererArgs* renderer_args = (ImGui_ImplVulkan_ViewportsRendererArgs*)(renderer_args_void);
 
     if (vd->SwapChainNeedRebuild || vd->SwapChainSuboptimal)
     {
@@ -2423,6 +2435,11 @@ static void ImGui_ImplVulkan_RenderWindow(ImGuiViewport* viewport, void*)
             info.pClearValues = (viewport->Flags & ImGuiViewportFlags_NoRendererClear) ? nullptr : &wd->ClearValue;
             vkCmdBeginRenderPass(fd->CommandBuffer, &info, VK_SUBPASS_CONTENTS_INLINE);
         }
+    }
+
+    if (renderer_args && renderer_args->CustomPushConstantData)
+    {
+        vkCmdPushConstants(fd->CommandBuffer, bd->PipelineLayoutForViewports.Handle, bd->PipelineInfoForViewports.CustomShadersInfo.PushConstantStages, 4 * sizeof(float), bd->PipelineInfoForViewports.CustomShadersInfo.PushConstantSize, renderer_args->CustomPushConstantData);
     }
 
     ImGui_ImplVulkan_RenderDrawData(viewport->DrawData, fd->CommandBuffer, bd->PipelineForViewports, bd->PipelineLayoutForViewports.Handle);
