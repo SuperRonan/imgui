@@ -82,6 +82,15 @@
 #define IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE   (8)     // Minimum per atlas
 #define IMGUI_IMPL_VULKAN_MINIMUM_SAMPLER_POOL_SIZE         (2)     // Minimum for linear + nearest
 
+struct ImGui_ImplVulkan_CustomShadersInfo
+{
+    // (Optional) Customize default vertex/fragment shaders if not VK_NULL_HANDLE, otherwise we use defaults.
+    // - Shader inputs/outputs need to match ours.
+    // - VkShaderModule must survive for whole during of backend usage.
+    VkShaderModule CustomShaderVert;
+    VkShaderModule CustomShaderFrag;
+};
+
 // Specify settings to create pipeline
 struct ImGui_ImplVulkan_PipelineInfo
 {
@@ -95,6 +104,9 @@ struct ImGui_ImplVulkan_PipelineInfo
 #ifdef IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING
     VkPipelineRenderingCreateInfoKHR PipelineRenderingCreateInfo;   // Optional, valid if .sType == VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR
 #endif
+
+    // Optional
+    ImGui_ImplVulkan_CustomShadersInfo CustomShadersInfo;
 };
 
 struct ImGui_ImplVulkan_SecondaryViewportsInfo
@@ -148,12 +160,6 @@ struct ImGui_ImplVulkan_InitInfo
     const VkAllocationCallbacks*    Allocator;
     void                            (*CheckVkResultFn)(VkResult err);
     VkDeviceSize                    MinAllocationSize;          // Minimum allocation size. Set to 1024*1024 to satisfy zealous best practices validation layer and waste a little memory.
-
-    // (Optional) Customize default vertex/fragment shaders.
-    // - if .sType == VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO we use specified structs, otherwise we use defaults.
-    // - Shader inputs/outputs need to match ours. Code/data pointed to by the structure needs to survive for whole during of backend usage.
-    VkShaderModuleCreateInfo        CustomShaderVertCreateInfo;
-    VkShaderModuleCreateInfo        CustomShaderFragCreateInfo;
 };
 
 // Follow "Getting Started" link and check examples/ folder to learn about using backends!
