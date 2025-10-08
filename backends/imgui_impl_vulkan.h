@@ -120,6 +120,13 @@ struct ImGui_ImplVulkan_SecondaryViewportsInfo
     VkPresentModeKHR                DesiredPresentMode;
 
     VkImageUsageFlags               SwapChainImageUsage;            // Extra flags for vkCreateSwapchainKHR() calls for secondary viewports. We automatically add VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT. You can add e.g. VK_IMAGE_USAGE_TRANSFER_SRC_BIT if you need to capture from viewports.
+
+    // Optional
+    typedef ImGui_ImplVulkan_CustomShadersInfo(*GetCustomShaderCallback)(const void*, VkSurfaceFormatKHR);
+    // If provided, called back to provide viewports custom shaders based on their surface format
+    GetCustomShaderCallback         GetCustomShadersInfo;
+    // User data for GetCustomShaderCallback
+    const void*                     GetCustomShadersInfoUserData;
 };
 
 // Initialization data, for ImGui_ImplVulkan_Init()
@@ -198,6 +205,12 @@ struct ImGui_ImplVulkan_RenderState
     VkCommandBuffer     CommandBuffer;
     VkPipeline          Pipeline;
     VkPipelineLayout    PipelineLayout;
+};
+
+// (Advanced) ImGui::RenderPlatformWindowsDefault: renderer_render_arg
+struct ImGui_ImplVulkan_ViewportsRendererArgs
+{
+    const void*         CustomPushConstantData;
 };
 
 //-------------------------------------------------------------------------
