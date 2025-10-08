@@ -292,8 +292,8 @@ struct ImGui_ImplVulkan_Data
     VkDescriptorSetLayout       DescriptorSetLayout;
     CachedPipelineLayout        PipelineLayout;
     VkPipeline                  Pipeline;               // pipeline for main render pass (created by app)
-    VkShaderModule              ShaderModuleVert;
-    VkShaderModule              ShaderModuleFrag;
+    VkShaderModule              ShaderModuleVert;       // Default module, created by backend when needed and kept alive until shutdown
+    VkShaderModule              ShaderModuleFrag;       // Default module, created by backend when needed and kept alive until shutdown
     VkDescriptorPool            DescriptorPool;
     ImVector<VkFormat>          PipelineRenderingCreateInfoColorAttachmentFormats; // Deep copy of format array
 
@@ -936,18 +936,17 @@ void ImGui_ImplVulkan_UpdateTexture(ImTextureData* tex)
         ImGui_ImplVulkan_DestroyTexture(tex);
 }
 
+// Create default shader modules
 static void ImGui_ImplVulkan_CreateShaderModules(VkDevice device, const VkAllocationCallbacks* allocator)
 {
     ImGui_ImplVulkan_Data* bd = ImGui_ImplVulkan_GetBackendData();
-    ImGui_ImplVulkan_InitInfo* v = &bd->VulkanInitInfo;
     if (bd->ShaderModuleVert == VK_NULL_HANDLE)
     {
         VkShaderModuleCreateInfo default_vert_info = {};
         default_vert_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         default_vert_info.codeSize = sizeof(__glsl_shader_vert_spv);
         default_vert_info.pCode = (uint32_t*)__glsl_shader_vert_spv;
-        VkShaderModuleCreateInfo* p_vert_info = (v->CustomShaderVertCreateInfo.sType == VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO) ? &v->CustomShaderVertCreateInfo : &default_vert_info;
-        VkResult err = vkCreateShaderModule(device, p_vert_info, allocator, &bd->ShaderModuleVert);
+        VkResult err = vkCreateShaderModule(device, &default_vert_info, allocator, &bd->ShaderModuleVert);
         check_vk_result(err);
     }
     if (bd->ShaderModuleFrag == VK_NULL_HANDLE)
@@ -956,8 +955,7 @@ static void ImGui_ImplVulkan_CreateShaderModules(VkDevice device, const VkAlloca
         default_frag_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         default_frag_info.codeSize = sizeof(__glsl_shader_frag_spv);
         default_frag_info.pCode = (uint32_t*)__glsl_shader_frag_spv;
-        VkShaderModuleCreateInfo* p_frag_info = (v->CustomShaderFragCreateInfo.sType == VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO) ? &v->CustomShaderFragCreateInfo : &default_frag_info;
-        VkResult err = vkCreateShaderModule(device, p_frag_info, allocator, &bd->ShaderModuleFrag);
+        VkResult err = vkCreateShaderModule(device, &default_frag_info, allocator, &bd->ShaderModuleFrag);
         check_vk_result(err);
     }
 }
@@ -1003,19 +1001,28 @@ static VkPipelineLayout ImGui_ImplVulkan_GetPipelineLayout(ImGui_ImplVulkan_Data
 typedef void VkPipelineRenderingCreateInfoKHR;
 #endif
 
+template <class T>
+static T const& FirstValid(T const& a, T const& b)
+{
+    return a ? a : b;
+}
+
 static VkPipeline ImGui_ImplVulkan_CreatePipeline(VkDevice device, const VkAllocationCallbacks* allocator, VkPipelineCache pipelineCache, const ImGui_ImplVulkan_PipelineInfo* info, ImGui_ImplVulkan_Data::CachedPipelineLayout & layout)
 {
     ImGui_ImplVulkan_Data* bd = ImGui_ImplVulkan_GetBackendData();
-    ImGui_ImplVulkan_CreateShaderModules(device, allocator);
+    if (!info->CustomShadersInfo.CustomShaderVert || !info->CustomShadersInfo.CustomShaderFrag)
+    {
+        ImGui_ImplVulkan_CreateShaderModules(device, allocator);
+    }
 
     VkPipelineShaderStageCreateInfo stage[2] = {};
     stage[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stage[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-    stage[0].module = bd->ShaderModuleVert;
+    stage[0].module = FirstValid(info->CustomShadersInfo.CustomShaderVert, bd->ShaderModuleVert);
     stage[0].pName = "main";
     stage[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stage[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    stage[1].module = bd->ShaderModuleFrag;
+    stage[1].module = FirstValid(info->CustomShadersInfo.CustomShaderFrag, bd->ShaderModuleFrag);
     stage[1].pName = "main";
 
     VkVertexInputBindingDescription binding_desc[1] = {};
