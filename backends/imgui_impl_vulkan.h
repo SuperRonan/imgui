@@ -92,6 +92,13 @@ struct ImGui_ImplVulkan_CustomShadersInfo
     VkSpecializationInfo* SpecializationInfoVert;
     VkShaderModule CustomShaderFrag;
     VkSpecializationInfo* SpecializationInfoFrag;
+
+    // Optional if any of the custom shaders is used
+
+    // The vertex shader already uses push constant range [0, 4 * sizeof(float)[
+    // If PushConstantSize is non zero, it will be registered at offset 4 * sizeof(float)
+    uint32_t PushConstantSize;
+    VkShaderStageFlags PushConstantStages;
 };
 
 // Specify settings to create pipeline
@@ -176,6 +183,7 @@ IMGUI_IMPL_API void             ImGui_ImplVulkan_SetMinImageCount(uint32_t min_i
 // The main window pipeline will be created by ImGui_ImplVulkan_Init() if possible (== RenderPass xor (UseDynamicRendering && PipelineRenderingCreateInfo->sType == VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR))
 // Else, the pipeline can be created, or re-created, using ImGui_ImplVulkan_CreateMainPipeline() before rendering.
 IMGUI_IMPL_API void             ImGui_ImplVulkan_CreateMainPipeline(const ImGui_ImplVulkan_PipelineInfo* info);
+IMGUI_IMPL_API VkPipelineLayout ImGui_ImplVulkan_GetMainPipelineLayout();
 
 // (Advanced) Use e.g. if you need to precisely control the timing of texture updates (e.g. for staged rendering), by setting ImDrawData::Textures = nullptr to handle this manually.
 IMGUI_IMPL_API void             ImGui_ImplVulkan_UpdateTexture(ImTextureData* tex);
