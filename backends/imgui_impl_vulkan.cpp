@@ -1020,10 +1020,18 @@ static VkPipeline ImGui_ImplVulkan_CreatePipeline(VkDevice device, const VkAlloc
     stage[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
     stage[0].module = FirstValid(info->CustomShadersInfo.CustomShaderVert, bd->ShaderModuleVert);
     stage[0].pName = "main";
+    if (info->CustomShadersInfo.CustomShaderVert)
+    {
+        stage[0].pSpecializationInfo = info->CustomShadersInfo.SpecializationInfoVert;
+    }
     stage[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stage[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
     stage[1].module = FirstValid(info->CustomShadersInfo.CustomShaderFrag, bd->ShaderModuleFrag);
     stage[1].pName = "main";
+    if (info->CustomShadersInfo.CustomShaderFrag)
+    {
+        stage[1].pSpecializationInfo = info->CustomShadersInfo.SpecializationInfoFrag;
+    }
 
     VkVertexInputBindingDescription binding_desc[1] = {};
     binding_desc[0].stride = sizeof(ImDrawVert);

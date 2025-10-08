@@ -80,8 +80,11 @@ struct ImGui_ImplVulkan_CustomShadersInfo
     // (Optional) Customize default vertex/fragment shaders if not VK_NULL_HANDLE, otherwise we use defaults.
     // - Shader inputs/outputs need to match ours.
     // - VkShaderModule must survive for whole during of backend usage.
+    // - Specialization used only if the relevant custom shader is provided. If non nullptr, must survive for whole during of backend usage.
     VkShaderModule CustomShaderVert;
+    VkSpecializationInfo* SpecializationInfoVert;
     VkShaderModule CustomShaderFrag;
+    VkSpecializationInfo* SpecializationInfoFrag;
 };
 
 // Specify settings to create pipeline
