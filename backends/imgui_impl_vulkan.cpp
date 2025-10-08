@@ -282,6 +282,8 @@ struct ImGui_ImplVulkan_Data
 {
     struct CachedPipelineLayout
     {
+        uint32_t                CustomPushConstantSize;
+        VkShaderStageFlags      CustomPushConstantStages;
         VkPipelineLayout        Handle;
     };
 
@@ -960,7 +962,7 @@ static void ImGui_ImplVulkan_CreateShaderModules(VkDevice device, const VkAlloca
     }
 }
 
-static VkPipelineLayout ImGui_ImplVulkan_CreatePipelineLayout()
+static VkPipelineLayout ImGui_ImplVulkan_CreatePipelineLayout(uint32_t customPushConstantSize, VkShaderStageFlags customPushConstantStages)
 {
     ImGui_ImplVulkan_Data* bd = ImGui_ImplVulkan_GetBackendData();
     ImGui_ImplVulkan_InitInfo* v = &bd->VulkanInitInfo;
@@ -982,17 +984,35 @@ static VkPipelineLayout ImGui_ImplVulkan_CreatePipelineLayout()
     push_constants[0].size = sizeof(float) * 4;
     layout_info.pushConstantRangeCount = 1;
 
+    if (customPushConstantSize)
+    {
+        layout_info.pushConstantRangeCount = 2;
+        push_constants[1].stageFlags = customPushConstantStages;
+        push_constants[1].offset = push_constants[0].size;
+        push_constants[1].size = customPushConstantSize;
+    }
+
     VkPipelineLayout res = VK_NULL_HANDLE;
     VkResult err = vkCreatePipelineLayout(bd->VulkanInitInfo.Device, &layout_info, v->Allocator, &res);
     check_vk_result(err);
     return res;
 }
 
-static VkPipelineLayout ImGui_ImplVulkan_GetPipelineLayout(ImGui_ImplVulkan_Data::CachedPipelineLayout& cache)
+static VkPipelineLayout ImGui_ImplVulkan_GetPipelineLayout(ImGui_ImplVulkan_Data::CachedPipelineLayout& cache, uint32_t customPushConstantSize, VkShaderStageFlags customPushConstantStages)
 {
+    if (cache.Handle != VK_NULL_HANDLE && (cache.CustomPushConstantSize != customPushConstantSize || cache.CustomPushConstantStages != customPushConstantStages))
+    {
+        ImGui_ImplVulkan_Data* bd = ImGui_ImplVulkan_GetBackendData();
+        ImGui_ImplVulkan_InitInfo* v = &bd->VulkanInitInfo;
+        vkDeviceWaitIdle(v->Device);
+        vkDestroyPipelineLayout(v->Device, cache.Handle, v->Allocator);
+        cache.Handle = VK_NULL_HANDLE;
+    }
     if (!cache.Handle)
     {
-        cache.Handle = ImGui_ImplVulkan_CreatePipelineLayout();
+        cache.CustomPushConstantSize = customPushConstantSize;
+        cache.CustomPushConstantStages = customPushConstantStages;
+        cache.Handle = ImGui_ImplVulkan_CreatePipelineLayout(customPushConstantSize, customPushConstantStages);
     }
     return cache.Handle;
 }
@@ -1115,7 +1135,7 @@ static VkPipeline ImGui_ImplVulkan_CreatePipeline(VkDevice device, const VkAlloc
     create_info.pDepthStencilState = &depth_info;
     create_info.pColorBlendState = &blend_info;
     create_info.pDynamicState = &dynamic_state;
-    create_info.layout = ImGui_ImplVulkan_GetPipelineLayout(layout);
+    create_info.layout = ImGui_ImplVulkan_GetPipelineLayout(layout, info->CustomShadersInfo.PushConstantSize, info->CustomShadersInfo.PushConstantStages);
     create_info.renderPass = info->RenderPass;
     create_info.subpass = info->Subpass;
 
@@ -1218,6 +1238,24 @@ bool ImGui_ImplVulkan_CreateDeviceObjects()
     return true;
 }
 
+void ImGui_ImplVulkan_SanitizeCustomShadersInfo(ImGui_ImplVulkan_CustomShadersInfo& info)
+{
+    if (!info.CustomShaderVert)
+    {
+        info.PushConstantStages &= ~VK_SHADER_STAGE_VERTEX_BIT;
+        info.SpecializationInfoVert = nullptr;
+    }
+    if (!info.CustomShaderFrag)
+    {
+        info.PushConstantStages &= ~VK_SHADER_STAGE_FRAGMENT_BIT;
+        info.SpecializationInfoFrag = nullptr;
+    }
+    if (!info.CustomShaderVert && !info.CustomShaderFrag)
+    {
+        info.PushConstantSize = 0;
+    }
+}
+
 void ImGui_ImplVulkan_CreateMainPipeline(const ImGui_ImplVulkan_PipelineInfo* pipeline_info_in)
 {
     ImGui_ImplVulkan_Data* bd = ImGui_ImplVulkan_GetBackendData();
@@ -1243,7 +1281,16 @@ void ImGui_ImplVulkan_CreateMainPipeline(const ImGui_ImplVulkan_PipelineInfo* pi
         pipeline_rendering_create_info->pColorAttachmentFormats = bd->PipelineRenderingCreateInfoColorAttachmentFormats.Data;
     }
 #endif
+
+    ImGui_ImplVulkan_SanitizeCustomShadersInfo(pipeline_info->CustomShadersInfo);
+
     bd->Pipeline = ImGui_ImplVulkan_CreatePipeline(v->Device, v->Allocator, v->PipelineCache, pipeline_info, bd->PipelineLayout);
+}
+
+VkPipelineLayout ImGui_ImplVulkan_GetMainPipelineLayout()
+{
+    ImGui_ImplVulkan_Data* bd = ImGui_ImplVulkan_GetBackendData();
+    return bd->PipelineLayout.Handle;
 }
 
 void    ImGui_ImplVulkan_DestroyDeviceObjects()
