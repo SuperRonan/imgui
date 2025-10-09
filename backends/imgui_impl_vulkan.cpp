@@ -1668,6 +1668,16 @@ void ImGui_ImplVulkan_DestroyWindowRenderBuffers(VkDevice device, ImGui_ImplVulk
     buffers->Count = 0;
 }
 
+void ImGui_ImplVulkan_SetSecondaryViewportsOptions(const ImGui_ImplVulkan_SecondaryViewportsInfo* info)
+{
+    ImGui_ImplVulkan_Data* bd = ImGui_ImplVulkan_GetBackendData();
+    ImGui_ImplVulkan_InitInfo* v = &bd->VulkanInitInfo;
+
+    // Will trigger a call to ImGui_ImplVulkan_PrepareViewportsRendering()
+    bd->ViewportsFormat = {};
+    v->SecondaryViewportsInfo = *info;
+}
+
 //-------------------------------------------------------------------------
 // Internal / Miscellaneous Vulkan Helpers
 // (Used by example's main.cpp. Used by multi-viewport features. PROBABLY NOT used by your own engine/app.)
@@ -2179,6 +2189,7 @@ static void ImGui_ImplVulkan_SelectPresentMode(ImGuiViewport* viewport)
     ImGui_ImplVulkan_ViewportData* vd = (ImGui_ImplVulkan_ViewportData*)viewport->RendererUserData;
     ImGui_ImplVulkanH_Window* wd = &vd->Window;
 
+    wd->DesiredPresentMode = v->SecondaryViewportsInfo.DesiredPresentMode;
     // FIXME-VULKAN: Even thought mailbox seems to get us maximum framerate with a single window, it halves framerate with a second window etc. (w/ Nvidia and SDK 1.82.1)
     const VkPresentModeKHR presentModes[] = { v->SecondaryViewportsInfo.DesiredPresentMode, VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_FIFO_KHR };
     int presentModesCount = IM_COUNTOF(presentModes);
@@ -2216,7 +2227,6 @@ static void ImGui_ImplVulkan_PrepareViewportsRendering(VkSurfaceKHR surface)
     bd->ViewportsFormat = ImGui_ImplVulkanH_SelectSurfaceFormat(v->PhysicalDevice, surface, pRequestSurfaceImageFormats, requestSurfaceImageFormatsCount, requestSurfaceColorSpace);
 
     // Create pipeline (shared by all secondary viewports)
-    if (bd->PipelineForViewports == VK_NULL_HANDLE)
     {
 #ifdef IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING
         if (v->UseDynamicRendering)
@@ -2228,6 +2238,11 @@ static void ImGui_ImplVulkan_PrepareViewportsRendering(VkSurfaceKHR surface)
 #endif
         else
         {
+            if (pipeline_info->RenderPass)
+            {
+                vkDeviceWaitIdle(v->Device);
+                vkDestroyRenderPass(v->Device, pipeline_info->RenderPass, v->Allocator);
+            }
             // Create a reference RenderPass (needed for the Pipeline creation)
             // Viewports will create their own RenderPass, compatible with this one (same format, different clear option)
             VkAttachmentDescription attachment = {};
@@ -2254,6 +2269,11 @@ static void ImGui_ImplVulkan_PrepareViewportsRendering(VkSurfaceKHR surface)
             memset(&pipeline_info->CustomShadersInfo, 0, sizeof(ImGui_ImplVulkan_CustomShadersInfo));
         }
 
+        if (bd->PipelineForViewports)
+        {
+            vkDeviceWaitIdle(v->Device);
+            vkDestroyPipeline(v->Device, bd->PipelineForViewports, v->Allocator);
+        }
         bd->PipelineForViewports = ImGui_ImplVulkan_CreatePipeline(v->Device, v->Allocator, VK_NULL_HANDLE, pipeline_info, bd->PipelineLayoutForViewports);
     }
 }
@@ -2296,6 +2316,7 @@ static void ImGui_ImplVulkan_CreateWindow(ImGuiViewport* viewport)
         ImGui_ImplVulkan_PrepareViewportsRendering(wd->Surface);
     }
     wd->SurfaceFormat = bd->ViewportsFormat;
+    wd->DesiredSurfaceFormat = v->SecondaryViewportsInfo.DesiredFormat;
 
     // Create SwapChain, RenderPass, Framebuffer, etc.
     wd->UseDynamicRendering = v->UseDynamicRendering;
@@ -2345,8 +2366,25 @@ static void ImGui_ImplVulkan_RenderWindow(ImGuiViewport* viewport, void* rendere
     VkResult err;
     const ImGui_ImplVulkan_ViewportsRendererArgs* renderer_args = (ImGui_ImplVulkan_ViewportsRendererArgs*)(renderer_args_void);
 
-    if (vd->SwapChainNeedRebuild || vd->SwapChainSuboptimal)
+    bool create_or_resize = vd->SwapChainNeedRebuild || vd->SwapChainSuboptimal;
+    if (wd->DesiredPresentMode != v->SecondaryViewportsInfo.DesiredPresentMode)
     {
+        ImGui_ImplVulkan_SelectPresentMode(viewport);
+        create_or_resize |= true;
+    }
+
+    if (bd->ViewportsFormat.format == VK_FORMAT_UNDEFINED)
+    {
+        ImGui_ImplVulkan_PrepareViewportsRendering(wd->Surface);
+        create_or_resize |= true;
+    }
+
+    create_or_resize |= memcmp(&wd->DesiredSurfaceFormat, &v->SecondaryViewportsInfo.DesiredFormat, sizeof(VkSurfaceFormatKHR)) != 0;
+
+    if (create_or_resize)
+    {
+        wd->SurfaceFormat = bd->ViewportsFormat;
+        wd->DesiredSurfaceFormat = v->SecondaryViewportsInfo.DesiredFormat;
         ImGui_ImplVulkanH_CreateOrResizeWindow(v->Instance, v->PhysicalDevice, v->Device, wd, v->QueueFamily, v->Allocator, (int)viewport->Size.x, (int)viewport->Size.y, v->MinImageCount, v->SecondaryViewportsInfo.SwapChainImageUsage);
         vd->SwapChainNeedRebuild = vd->SwapChainSuboptimal = false;
     }

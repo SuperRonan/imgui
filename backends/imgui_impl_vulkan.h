@@ -207,6 +207,10 @@ IMGUI_IMPL_API VkDescriptorSet  ImGui_ImplVulkan_AddTexture(VkSampler sampler, V
 // This is only useful with IMGUI_IMPL_VULKAN_NO_PROTOTYPES / VK_NO_PROTOTYPES
 IMGUI_IMPL_API bool             ImGui_ImplVulkan_LoadFunctions(uint32_t api_version, PFN_vkVoidFunction(*loader_func)(const char* function_name, void* user_data), void* user_data = nullptr);
 
+// (Advanced) If you want to control secondary viewports without reinitializing the backend
+// Secondary viewports equivalent of ImGui_ImplVulkan_CreateMainPipeline()
+IMGUI_IMPL_API void             ImGui_ImplVulkan_SetSecondaryViewportsOptions(const ImGui_ImplVulkan_SecondaryViewportsInfo* info);
+
 // [BETA] Selected render state data shared with callbacks.
 // This is temporarily stored in GetPlatformIO().Renderer_RenderState during the ImGui_ImplVulkan_RenderDrawData() call.
 //      ImGui_ImplVulkan_RenderState* render_state = (ImGui_ImplVulkan_RenderState*)ImGui::GetPlatformIO().Renderer_RenderState;
@@ -285,7 +289,9 @@ struct ImGui_ImplVulkanH_Window
     bool                    UseDynamicRendering;
     VkSurfaceKHR            Surface;            // Surface created and destroyed by caller.
     VkSurfaceFormatKHR      SurfaceFormat;
+    VkSurfaceFormatKHR      DesiredSurfaceFormat;
     VkPresentModeKHR        PresentMode;
+    VkPresentModeKHR        DesiredPresentMode;
     VkAttachmentDescription AttachmentDesc;     // RenderPass creation: main attachment description.
     VkClearValue            ClearValue;         // RenderPass creation: clear value when using VK_ATTACHMENT_LOAD_OP_CLEAR.
 
@@ -298,6 +304,7 @@ struct ImGui_ImplVulkanH_Window
     uint32_t                ImageCount;         // Number of simultaneous in-flight frames (returned by vkGetSwapchainImagesKHR, usually derived from min_image_count)
     uint32_t                SemaphoreCount;     // Number of simultaneous in-flight frames + 1, to be able to use it in vkAcquireNextImageKHR
     uint32_t                SemaphoreIndex;     // Current set of swapchain wait semaphores we're using (needs to be distinct from per frame data)
+
     ImVector<ImGui_ImplVulkanH_Frame>           Frames;
     ImVector<ImGui_ImplVulkanH_FrameSemaphores> FrameSemaphores;
 
