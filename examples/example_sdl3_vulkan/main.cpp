@@ -342,6 +342,8 @@ static void FramePresent(ImGui_ImplVulkanH_Window* wd)
     wd->SemaphoreIndex = (wd->SemaphoreIndex + 1) % wd->SemaphoreCount; // Now we can use the next set of semaphores
 }
 
+#include <test_docking_split.hpp>
+
 // Main code
 int main(int, char**)
 {
@@ -540,6 +542,8 @@ int main(int, char**)
                 show_another_window = false;
             ImGui::End();
         }
+
+        Test::Declare();
 
         // Rendering
         ImGui::Render();
